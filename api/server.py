@@ -11,6 +11,11 @@ import traceback
 from fastapi.responses import RedirectResponse, JSONResponse
 import traceback, sys
 
+
+
+app = FastAPI(title="LLM Code Deployment API (Synthesizing)")
+
+
 # show a tiny landing page and a debug JSON at /_routes for HF to probe
 @app.get("/", include_in_schema=False)
 async def root_redirect():
@@ -24,8 +29,6 @@ async def debug_routes():
     except Exception:
         return JSONResponse({"error": "listing routes failed", "trace": traceback.format_exc()})
 
-
-app = FastAPI(title="LLM Code Deployment API (Synthesizing)")
 
 @app.post("/task", response_model=TaskResponse)
 async def receive_task(req: TaskRequest):
