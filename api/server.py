@@ -11,6 +11,9 @@ import traceback
 from fastapi.responses import RedirectResponse, JSONResponse
 import traceback, sys
 
+print("[BOOT] GITHUB_USERNAME =", os.getenv("GITHUB_USERNAME"))
+print("[BOOT] GH_TOKEN set?", bool(os.getenv("GH_TOKEN")))
+print("[BOOT] GITHUB_TOKEN set?", bool(os.getenv("GITHUB_TOKEN")))
 
 
 app = FastAPI(title="LLM Code Deployment API (Synthesizing)")
