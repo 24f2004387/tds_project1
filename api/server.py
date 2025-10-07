@@ -8,8 +8,22 @@ from .settings import settings
 import os
 import traceback
 
-print("[BOOT] OPENAI_BASE_URL =", settings.OPENAI_BASE_URL)
-print("[BOOT] OPENAI_API_KEY set? ->", bool(settings.OPENAI_API_KEY))
+from fastapi.responses import RedirectResponse, JSONResponse
+import traceback, sys
+
+# show a tiny landing page and a debug JSON at /_routes for HF to probe
+@app.get("/", include_in_schema=False)
+async def root_redirect():
+    return RedirectResponse(url="/docs")
+
+@app.get("/_routes", include_in_schema=False)
+async def debug_routes():
+    try:
+        r = [{"path": rt.path, "name": getattr(rt, "name", "")} for rt in app.routes]
+        return JSONResponse(r)
+    except Exception:
+        return JSONResponse({"error": "listing routes failed", "trace": traceback.format_exc()})
+
 
 app = FastAPI(title="LLM Code Deployment API (Synthesizing)")
 
