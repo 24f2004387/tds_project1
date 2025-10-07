@@ -1,11 +1,9 @@
----
-title: LLM Deploy
-emoji: ⚡
-colorFrom: purple
-colorTo: red
-sdk: docker
-pinned: false
-short_description: project one
----
+# LLM Code Deployment — Synthesized App (AI Pipe)
 
-Check out the configuration reference at https://huggingface.co/docs/hub/spaces-config-reference
+- FastAPI `/task`
+- **LLM synthesizes full app** (index.html + app.js) for ANY brief/checks
+- GitHub repo create/push (via `gh` CLI)
+- Pages auto-enable (POST) + actions workflow
+- LLM-generated README per repo
+
+See `api/.env.example` for config.
