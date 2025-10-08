@@ -119,9 +119,7 @@ def update_existing_repo_with_llm(req: TaskRequest) -> BuildResult:
     # Guardrails
     require_highlight_if_checked(updated_files, req.checks)
     require_title_if_checked(updated_files, req.checks)
-    # NOTE: previous code passed a 'seed' as third arg which caused an arity error.
-    # The guardrail function expects two args (files, checks); pass only those.
-    require_selector_if_mentioned(updated_files, req.checks)
+    require_selector_if_mentioned(updated_files, req.checks, seed)
 
     # Commit and push (use token-safe push helper)
     _run(["git", "add", "."], cwd=repo_path)
