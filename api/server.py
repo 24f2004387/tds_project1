@@ -36,7 +36,7 @@ async def debug_routes():
         return JSONResponse({"error": "listing routes failed", "trace": traceback.format_exc()})
 
 
-@app.post("/task", response_model=TaskResponse)
+@app.post("/task", response_model=None)
 async def receive_task(req: TaskRequest):
     if not verify_secret(req.secret):
         raise HTTPException(status_code=401, detail="Invalid secret")
