@@ -72,7 +72,15 @@ async def receive_task(req: TaskRequest):
                 pass
         Thread(target=_notify, daemon=True).start()
 
-    return TaskResponse(status="ok", **result.dict())
+    return {
+        "email": req.email,
+        "task": req.task,
+        "round": req.round,
+        "nonce": req.nonce,
+        **result.dict(),
+        "status": "ok"
+    }
+
 
 @app.get("/_notify_log", include_in_schema=False)
 async def _notify_log():
