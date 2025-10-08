@@ -29,6 +29,9 @@ def update_existing_repo_with_llm(req: TaskRequest) -> BuildResult:
     # Clone the repo
     _run(["git", "clone", repo_url, str(repo_path)])
     _run(["git", "checkout", settings.DEFAULT_BRANCH], cwd=repo_path)
+    _run(["git", "config", "user.email", "bot@llm-deploy.local"], cwd=repo_path)
+    _run(["git", "config", "user.name", settings.GITHUB_USERNAME or "llm-deploy-bot"], cwd=repo_path)
+
 
     # Read current files
     index_path = repo_path / "index.html"
