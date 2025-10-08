@@ -1,5 +1,10 @@
 import os
-import tempfile, subprocess, pathlib, base64
+import tempfile
+import subprocess
+import pathlib
+import base64
+import textwrap
+import stat
 from typing import Dict
 from .models import TaskRequest, BuildResult
 from .settings import settings
@@ -11,9 +16,53 @@ from .guardrails import (
     require_selector_if_mentioned,
 )
 
-def _run(cmd: list, cwd=None):
+def _run(cmd: list, cwd=None, env=None):
     print("RUN:", " ".join(cmd))
-    subprocess.check_call(cmd, cwd=cwd)
+    subprocess.check_call(cmd, cwd=cwd, env=env)
+
+def push_with_token(repo_path: str, repo_name: str):
+    """
+    Push the current branch to origin using token via a temporary GIT_ASKPASS helper.
+    This avoids interactive prompts in containers.
+    """
+    token = settings.GITHUB_TOKEN or os.getenv("GH_TOKEN")
+    if not token:
+        raise RuntimeError("GITHUB_TOKEN / GH_TOKEN not set - cannot push")
+
+    username = settings.GITHUB_USERNAME
+    if not username:
+        raise RuntimeError("GITHUB_USERNAME not set")
+
+    askpass_path = os.path.join(repo_path, "git_askpass.sh")
+    askpass_content = textwrap.dedent(f"""\
+        #!/usr/bin/env sh
+        # Git askpass helper - prints token for git to use as password
+        printf '%s' "{token}"
+    """)
+    with open(askpass_path, "w", encoding="utf-8") as f:
+        f.write(askpass_content)
+
+    # make executable
+    st = os.stat(askpass_path)
+    os.chmod(askpass_path, st.st_mode | stat.S_IEXEC)
+
+    # Ensure remote uses username so git calls askpass for password
+    remote_url = f"https://{username}@github.com/{username}/{repo_name}.git"
+    _run(["git", "remote", "set-url", "origin", remote_url], cwd=repo_path)
+
+    env = os.environ.copy()
+    env["GIT_ASKPASS"] = askpass_path
+    env["GIT_TERMINAL_PROMPT"] = "0"
+
+    try:
+        # push current branch (assumes branch already set to origin/main)
+        _run(["git", "push", "origin", settings.DEFAULT_BRANCH], cwd=repo_path, env=env)
+    finally:
+        # remove helper
+        try:
+            os.remove(askpass_path)
+        except Exception:
+            pass
 
 def update_existing_repo_with_llm(req: TaskRequest) -> BuildResult:
     assert req.round == 2, "This function only supports round 2"
@@ -29,9 +78,9 @@ def update_existing_repo_with_llm(req: TaskRequest) -> BuildResult:
     # Clone the repo
     _run(["git", "clone", repo_url, str(repo_path)])
     _run(["git", "checkout", settings.DEFAULT_BRANCH], cwd=repo_path)
+    # Ensure local identity for commits (safe, local repo-level config)
     _run(["git", "config", "user.email", "bot@llm-deploy.local"], cwd=repo_path)
     _run(["git", "config", "user.name", settings.GITHUB_USERNAME or "llm-deploy-bot"], cwd=repo_path)
-
 
     # Read current files
     index_path = repo_path / "index.html"
@@ -70,12 +119,16 @@ def update_existing_repo_with_llm(req: TaskRequest) -> BuildResult:
     # Guardrails
     require_highlight_if_checked(updated_files, req.checks)
     require_title_if_checked(updated_files, req.checks)
-    require_selector_if_mentioned(updated_files, req.checks, seed)
+    # NOTE: previous code passed a 'seed' as third arg which caused an arity error.
+    # The guardrail function expects two args (files, checks); pass only those.
+    require_selector_if_mentioned(updated_files, req.checks)
 
-    # Commit and push
+    # Commit and push (use token-safe push helper)
     _run(["git", "add", "."], cwd=repo_path)
     _run(["git", "commit", "-m", "update: round 2 requirements"], cwd=repo_path)
-    _run(["git", "push"], cwd=repo_path)
+
+    # Push with token helper to avoid interactive prompts in container
+    push_with_token(repo_path=str(repo_path), repo_name=repo_name)
 
     # Notify
     if req.evaluation_url:
