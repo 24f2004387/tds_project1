@@ -7,6 +7,9 @@ from .notifier import notify_with_backoff
 from .settings import settings
 import os
 import traceback
+from fastapi.responses import PlainTextResponse
+import pathlib
+
 
 from fastapi.responses import RedirectResponse, JSONResponse
 import traceback, sys
@@ -70,3 +73,15 @@ async def receive_task(req: TaskRequest):
         Thread(target=_notify, daemon=True).start()
 
     return TaskResponse(status="ok", **result.dict())
+
+@app.get("/_notify_log", include_in_schema=False)
+async def _notify_log():
+    path = pathlib.Path("/tmp/notify.log")
+    if not path.exists():
+        return PlainTextResponse("NO LOG: /tmp/notify.log not found\n")
+    try:
+        text = path.read_text(encoding="utf-8")
+        return PlainTextResponse(text)
+    except Exception as e:
+        return PlainTextResponse(f"ERROR reading log: {e}\n")
+
