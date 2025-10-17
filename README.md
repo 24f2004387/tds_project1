@@ -41,3 +41,23 @@ This API forms the backend of a “self-deploying LLM” — capable of turning 
      "evaluation_url": "https://example.com/notify",
      "attachments": []
    }
+2. The app:
+Verifies the shared secret.
+Calls synthesize_app() to generate HTML/JS.
+Creates and pushes a new GitHub repo using the GitHub CLI (gh).
+Enables GitHub Pages for live hosting.
+Sends a POST back to evaluation_url with build details.
+
+3. Response:
+
+{
+  "email": "you@example.com",
+  "task": "markdown-to-html-001",
+  "round": 1,
+  "nonce": "abc123",
+  "repo_url": "https://github.com/24f2004387/markdown-to-html-001",
+  "commit_sha": "9f6808ba71025ba18294a40836b5b5da6e1645b9",
+  "pages_url": "https://24f2004387.github.io/markdown-to-html-001/",
+  "status": "ok"
+}
+
