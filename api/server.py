@@ -1,28 +1,14 @@
-from fastapi import FastAPI, HTTPException
-from threading import Thread
-from .models import TaskRequest, TaskResponse
+from fastapi import FastAPI, HTTPException, BackgroundTasks
+from fastapi.responses import RedirectResponse, JSONResponse, PlainTextResponse
+from .models import TaskRequest
 from .security import verify_secret
 from .generator import generate_app_repo
 from .notifier import notify_with_backoff
-from .settings import settings
-import os
-import traceback
-from fastapi.responses import PlainTextResponse
-import pathlib
-
-
-from fastapi.responses import RedirectResponse, JSONResponse
-import traceback, sys
-
-print("[BOOT] GITHUB_USERNAME =", os.getenv("GITHUB_USERNAME"))
-print("[BOOT] GH_TOKEN set?", bool(os.getenv("GH_TOKEN")))
-print("[BOOT] GITHUB_TOKEN set?", bool(os.getenv("GITHUB_TOKEN")))
-
+import pathlib, traceback
 
 app = FastAPI(title="LLM Code Deployment API (Synthesizing)")
 
-
-# show a tiny landing page and a debug JSON at /_routes for HF to probe
+# Landing + debug endpoints
 @app.get("/", include_in_schema=False)
 async def root_redirect():
     return RedirectResponse(url="/docs")
@@ -35,61 +21,52 @@ async def debug_routes():
     except Exception:
         return JSONResponse({"error": "listing routes failed", "trace": traceback.format_exc()})
 
-
+# ---- MAIN ENDPOINT ----
 @app.post("/task", response_model=None)
-async def receive_task(req: TaskRequest):
+async def receive_task(req: TaskRequest, background_tasks: BackgroundTasks):
+    # 1️⃣ Verify secret first
     if not verify_secret(req.secret):
         raise HTTPException(status_code=401, detail="Invalid secret")
 
-    try:
-        if req.round == 1:
-            result = generate_app_repo(req)
-        elif req.round == 2:
-            from .generator_round2 import update_existing_repo_with_llm
-            result = update_existing_repo_with_llm(req)
-        else:
-            raise HTTPException(status_code=400, detail="Unsupported round")
-    except Exception as e:
-        traceback.print_exc()
-        raise HTTPException(status_code=500, detail=f"Build failed: {e}")
+    # 2️⃣ Immediately acknowledge (no payload needed)
+    response = JSONResponse(status_code=200, content={"status": "ok"})
 
-    if req.evaluation_url:
-        def _notify():
-            try:
-                notify_with_backoff(
-                    evaluation_url=req.evaluation_url,
-                    payload={
-                        "email": req.email,
-                        "task": req.task,
-                        "round": req.round,
-                        "nonce": req.nonce,
-                        "repo_url": result.repo_url,
-                        "commit_sha": result.commit_sha,
-                        "pages_url": result.pages_url,
-                    },
-                )
-            except Exception:
-                pass
-        Thread(target=_notify, daemon=True).start()
+    # 3️⃣ Do repo build + notify in background
+    def _process():
+        try:
+            if req.round == 1:
+                result = generate_app_repo(req)
+            elif req.round == 2:
+                from .generator_round2 import update_existing_repo_with_llm
+                result = update_existing_repo_with_llm(req)
+            else:
+                raise ValueError(f"Unsupported round {req.round}")
 
-    return {
-        "email": req.email,
-        "task": req.task,
-        "round": req.round,
-        "nonce": req.nonce,
-        **result.dict(),
-        "status": "ok"
-    }
+            if req.evaluation_url:
+                payload = {
+                    "email": req.email,
+                    "task": req.task,
+                    "round": req.round,
+                    "nonce": req.nonce,
+                    "repo_url": result.repo_url,
+                    "commit_sha": result.commit_sha,
+                    "pages_url": result.pages_url,
+                }
+                notify_with_backoff(req.evaluation_url, payload)
+        except Exception as e:
+            print("[ERROR] Task processing failed:", e)
+            traceback.print_exc()
 
+    background_tasks.add_task(_process)
+    return response
 
+# ---- NOTIFY LOG VIEWER ----
 @app.get("/_notify_log", include_in_schema=False)
 async def _notify_log():
     path = pathlib.Path("/tmp/notify.log")
     if not path.exists():
         return PlainTextResponse("NO LOG: /tmp/notify.log not found\n")
     try:
-        text = path.read_text(encoding="utf-8")
-        return PlainTextResponse(text)
+        return PlainTextResponse(path.read_text(encoding="utf-8"))
     except Exception as e:
         return PlainTextResponse(f"ERROR reading log: {e}\n")
-
